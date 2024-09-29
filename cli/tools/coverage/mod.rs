@@ -204,13 +204,36 @@ fn generate_coverage_report(
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
   let text_lines = TextLines::new(&script_source);
 
-  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
-    .into_iter()
-    .filter(|item| {
-      matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
-    })
-    .map(|item| item.range)
-    .collect::<Vec<_>>();
+  let comment_ranges = {
+    let tokens = deno_ast::lex(&script_source, MediaType::JavaScript);
+    let mut ranges = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+      if let deno_ast::TokenOrComment::Comment { .. } = tokens[i].inner {
+        let start = if i > 0 {
+          tokens[i - 1].range.end + 1
+        } else {
+          0
+        };
+        while i < tokens.len() - 1
+          && matches!(
+            tokens[i + 1].inner,
+            deno_ast::TokenOrComment::Comment { .. }
+          )
+        {
+          i += 1;
+        }
+        let end = if i < tokens.len() - 1 {
+          tokens[i + 1].range.start - 1
+        } else {
+          script_source.len()
+        };
+        ranges.push(start..end);
+      }
+      i += 1;
+    }
+    ranges
+  };
 
   let url = Url::parse(&script_coverage.url).unwrap();
   let mut coverage_report = CoverageReport {
